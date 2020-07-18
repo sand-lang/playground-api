@@ -58,7 +58,7 @@ app.post(
   '/run',
   schema({
     body: Joi.object({
-      files: Joi.object().pattern(Joi.string(), Joi.string().allow('').max(256)),
+      files: Joi.object().pattern(Joi.string().max(256), Joi.string().allow('')),
       entrypoint: Joi.string().max(256).default('main.sn'),
       stdin: Joi.string(),
     }),
@@ -70,7 +70,7 @@ app.post(
   '/build',
   schema({
     body: Joi.object({
-      files: Joi.object().pattern(Joi.string(), Joi.string().allow('').max(256)),
+      files: Joi.object().pattern(Joi.string().max(256), Joi.string().allow('')),
       entrypoint: Joi.string().max(256).default('main.sn'),
     }),
   }),
