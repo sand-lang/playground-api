@@ -15,6 +15,22 @@ app.use(express.urlencoded({ extended: false }));
 
 app.use(helmet());
 
+app.use((err, req, res, next) => {
+  console.error(err);
+  let error = 'Unknown error.';
+
+  switch (err.type) {
+    case "entity.parse.failed":
+      error = 'Malformed syntax.';
+      break;
+  }
+
+  res.status(err.status).json({
+    success: false,
+    error,
+  });
+})
+
 /**
  * @param {{[file: string]: string}} files 
  * @param {string} entrypoint 
@@ -23,10 +39,10 @@ app.use(helmet());
  * @returns {import('express').RequestHandler} 
  */
 const compile_action = (run = false) => async (req, res) => {
-  const { files, entrypoint, stdin = null } = req.body;
+  const { files, entrypoint, args = [], stdin = null } = req.body;
 
   try {
-    const result = await compile(files, entrypoint, true, stdin);
+    const result = await compile(files, entrypoint, true, args, stdin);
 
     res.json({
       success: true,
@@ -60,6 +76,7 @@ app.post(
     body: Joi.object({
       files: Joi.object().pattern(Joi.string().max(256), Joi.string().allow('')),
       entrypoint: Joi.string().max(256).default('main.sn'),
+      args: Joi.array().items(Joi.string()),
       stdin: Joi.string(),
     }),
   }),

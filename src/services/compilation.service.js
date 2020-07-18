@@ -2,7 +2,7 @@ const { v4: uuidv4 } = require('uuid');
 const path = require('path');
 const fs = require('fs').promises;
 
-const { execFile } = require('child_process');
+const child_process = require('child_process');
 
 const utils = require('../utils');
 
@@ -14,9 +14,9 @@ const CompilationError = require('../errors/CompilationError');
  * @param {...string} args 
  * @returns {Promise<{ error: import('child_process').ExecException, stdout: string, stderr: string }>}
  */
-function exec(file, ...args) {
+function exec(...args) {
   return new Promise(resolve => {
-    execFile(file, args, {
+    child_process.exec(args.join(' '), {
       timeout: 25000,
       windowsHide: true,
     }, (error, stdout, stderr) => {
@@ -37,11 +37,25 @@ function exec_san(...args) {
 }
 
 /**
+ * @param {string} arg 
+ */
+function normalize_arg(arg) {
+  if (!/^".*?"$/.test(arg) && !/^'.*?'$/.test(arg)) {
+    return `"${unescape(arg.replace('"', '\\"'))}"`;
+  }
+
+  return unescape(arg);
+}
+
+/**
  * @param {{[file: string]: string}} files 
  * @param {string} entrypoint 
+ * @param {boolean} run 
+ * @param {string[]} args 
+ * @param {string} stdin 
  * @returns {Promise<{ error: import('child_process').ExecException, stdout: string, stderr: string }>}
  */
-module.exports = async (files, entrypoint, run = false, stdin = null) => {
+module.exports = async (files, entrypoint, run = false, args = [], stdin = null) => {
   const id = uuidv4();
   const directory = path.resolve('tmp', id);
 
@@ -109,7 +123,16 @@ module.exports = async (files, entrypoint, run = false, stdin = null) => {
         stderr: compilation.stderr,
       };
     } else {
-      const execution = await exec(executable_fullpath);
+      const echo = [];
+
+      if (stdin) {
+        echo.push('echo');
+        echo.push(normalize_arg(stdin));
+        echo.push('|');
+      }
+
+      const normalized_args = args.map(normalize_arg);
+      const execution = await exec(...echo, executable_fullpath, ...normalized_args);
 
       if (execution.error) {
         throw new CompilationError(execution.error, execution.stdout, execution.stderr);
