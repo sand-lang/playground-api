@@ -51,21 +51,39 @@ function exec_san(...args) {
   return exec(path.resolve('san', 'bin', 'san'), ...args);
 }
 
-app.post(
-  '/run',
-  schema({
-    body: Joi.object({
-      files: Joi.object().pattern(Joi.string(), Joi.string().allow('').max(256)),
-      stdin: Joi.string(),
-      entrypoint: Joi.string().max(256).default('main.sn')
-    }),
-  }),
-  async (req, res) => {
-    const { files, stdin, entrypoint } = req.body;
+class CompilationError extends Error {
+  /**
+   * @param {import('child_process').ExecException} error 
+   * @param {string} stdout 
+   * @param {string} stderr 
+   */
+  constructor(error, stdout, stderr) {
+    super('Compilation error.');
 
-    const id = uuidv4();
-    const directory = path.resolve('tmp', id);
+    this.error = error;
+    this.stdout = stdout;
+    this.stderr = stderr;
+  }
+}
 
+/**
+ * @param {{[file: string]: string}} files 
+ * @param {string} entrypoint 
+ * @returns {Promise<{ error: import('child_process').ExecException, stdout: string, stderr: string }>}
+ */
+async function compile(files, entrypoint, run = false, stdin = null) {
+  const id = uuidv4();
+  const directory = path.resolve('tmp', id);
+
+  const created_files = [];
+  const wipe_files = () => Promise.all(created_files.map(file => fs.unlink(file)));
+
+  const clean = async () => {
+    await wipe_files();
+    await fs.rmdir(directory);
+  }
+
+  try {
     /** @type {{[key: string]: string}} */
     const path_map = Object.keys(files).reduce((acc, file) => ({
       ...acc,
@@ -76,71 +94,94 @@ app.post(
       const is_root = path_map[key] === directory || path_map[key] === `${directory}/`;
 
       if (!is_valid_path(path_map[key]) || !path_map[key].startsWith(`${directory}/`) || is_root) {
-        return res.json({
-          success: false,
-          error: `Filename '${key}' is not a valid path.`
-        });
+        throw new Error(`Filename '${key}' is not a valid path.`);
       }
     }
 
     const entrypoint_passed = Object.keys(files).some(file => file === entrypoint);
 
     if (!entrypoint_passed) {
-      return res.json({
-        success: false,
-        error: `Entrypoint ${entrypoint} not found in files.`,
-      });
+      throw new Error(`Entrypoint ${entrypoint} not found in files.`);
     }
 
     await fs.mkdir(directory, { recursive: true });
 
-    const created_files = [];
-    const wipe_files = () => Promise.all(created_files.map(file => fs.unlink(file)));
+    for (const filename in path_map) {
+      const filepath = path_map[filename];
 
-    try {
-      for (const filename in path_map) {
-        const filepath = path_map[filename];
+      const fullpath = path.resolve(directory, filepath);
+      await fs.writeFile(fullpath, files[filename]);
 
-        const fullpath = path.resolve(directory, filepath);
-        await fs.writeFile(fullpath, files[filename]);
-
-        created_files.push(fullpath);
-      }
-
-      const entrypoint_fullpath = path.resolve(directory, entrypoint);
-      const executable_fullpath = path.resolve(directory, `__${id}`);
-
-      const compilation = await exec_san('build', '-o', executable_fullpath, entrypoint_fullpath);
-
-      if (compilation.error || compilation.stdout) {
-        res.json({
-          sucess: false,
-          ...compilation,
-        });
-      } else {
-        created_files.push(executable_fullpath);
-
-        const execution = await exec(executable_fullpath);
-
-        res.json({
-          sucess: !execution.error,
-          ...execution,
-        });
-      }
-    } catch (e) {
-      console.error(e);
-
-      res.json({
-        success: false,
-        error: 'An error occured.',
-      });
+      created_files.push(fullpath);
     }
 
+    const entrypoint_fullpath = path.resolve(directory, entrypoint);
+    const executable_fullpath = path.resolve(directory, `__${id}`);
+
+    const compilation = await exec_san('build', '-o', executable_fullpath, entrypoint_fullpath);
+
+    if (compilation.error || compilation.stdout) {
+      throw new CompilationError(compilation.error, compilation.stdout, compilation.stderr)
+    }
+
+    created_files.push(executable_fullpath);
+
+    const execution = await exec(executable_fullpath);
+
+    if (execution.error) {
+      throw new CompilationError(execution.error, execution.stdout, execution.stderr);
+    }
+
+    await clean();
+
+    return {
+      stdout: execution.stdout,
+      stderr: execution.stderr,
+    };
+  } catch (e) {
+    await clean();
+    throw e;
+  }
+}
+
+app.post(
+  '/run',
+  schema({
+    body: Joi.object({
+      files: Joi.object().pattern(Joi.string(), Joi.string().allow('').max(256)),
+      entrypoint: Joi.string().max(256).default('main.sn'),
+      stdin: Joi.string(),
+    }),
+  }),
+  async (req, res) => {
+    const { files, entrypoint, stdin } = req.body;
+
     try {
-      await wipe_files();
-      await fs.rmdir(directory);
+      const result = await compile(files, entrypoint, true, stdin);
+
+      res.json({
+        success: true,
+        stdout: result.stdout,
+        stderr: result.stderr,
+      });
     } catch (e) {
-      console.error(e);
+      if (e instanceof CompilationError) {
+        res.json({
+          success: false,
+          error: {
+            killed: e.error.killed,
+            code: e.error.code,
+            signal: e.error.signal,
+          },
+          stdout: e.stdout,
+          stderr: e.stderr,
+        });
+      } else if (e instanceof Error) {
+        res.json({
+          success: false,
+          error: e.message,
+        });
+      }
     }
   });
 
