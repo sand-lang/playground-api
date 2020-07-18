@@ -1,0 +1,236 @@
+import "./memory"
+import "./range"
+
+namespace std {
+    fn strlen(str: i8*) : u64 {
+        let len: u64 = 0;
+
+        while str[len] != 0 {
+            len += 1;
+        }
+
+        return len;
+    }
+
+    fn numlen(n: i64) : u64 {
+        let len: u64 = 0;
+
+        while n != 0 {
+            len += 1;
+            n /= 10;
+        }
+
+        return len;
+    }
+
+    fn to_string(n: i64) : i8* {
+        let is_negative = n < 0;
+
+        let len = numlen(n);
+
+        if is_negative {
+            len += 1;
+            n = 0 - n;
+        }
+
+        let str = std::memory::allocate<i8>(len + 1);
+
+        if n == 0 {
+            str[0] = '0';
+        }
+
+        while n != 0 {
+            str[len - (1 as u64)] = (n % 10) + '0';
+            n /= 10;
+            len -= 1;
+        }
+
+        if is_negative {
+            str[0] = '-';
+        }
+
+        return str;
+    }
+
+    fn starts_with(str: const i8*, with: const i8*) : bool {
+        while str[0] != 0 && with[0] != 0 {
+            if str[0] != with[0] {
+                return false;
+            }
+
+            str += 1;
+            with += 1;
+        }
+
+        return with[0] == 0;
+    }
+}
+
+namespace std {
+    class string {
+        ptr: i8*;
+        length: u64;
+
+        static fn new() : string {
+            return string {
+                ptr = std::memory::allocate<i8>(1),
+                length = 0,
+            };
+        }
+
+        static fn new(value: i8*) : string {
+            let length = std::strlen(value);
+            return new(value, length);
+        }
+        
+        static fn new(value: i8*, length: const u64&) : string {
+            let ptr = std::memory::allocate<i8>(length + 1);
+
+            std::memory::copy(value, ptr, length);
+
+            return string {
+                ptr,
+                length,
+            };
+        }
+
+        static fn new(value: i8) : string {
+            let ptr = std::memory::allocate<i8>(2);
+            ptr[0] = value;
+
+            return string {
+                ptr,
+                length = 1,
+            };
+        }
+
+        static fn assign(ptr: i8*, length: u64) : string {
+            return string {
+                ptr,
+                length,
+            };
+        }
+
+        static fn assign(ptr: i8*) : string {
+            return string {
+                ptr,
+                length = std::strlen(ptr),
+            };
+        }
+
+        fn [](i: u64) : i8& {
+            return this->ptr[i];
+        }
+
+        fn replace(niddle: const i8&, by: const string&) : string {
+            let str = std::string::new();
+
+            for i in std::range<u64>::new(this->length) {
+                if this->ptr[i] == niddle {
+                    str += by;
+                } else {
+                    str += this->ptr[i];
+                }
+            }
+
+            return str;
+        }
+
+        fn +=(r: const std::string&) : std::string& {
+            let total = this->length + r.length;
+            let ptr = std::memory::allocate<i8>(total + 1);
+
+            std::memory::copy(this->ptr, ptr, this->length);
+            std::memory::copy(r.ptr, ptr + this->length, r.length);
+
+            std::memory::deallocate(this->ptr);
+            this->ptr = ptr;
+            this->length = total;
+
+            return *this;
+        }
+
+        fn +=(r: const i8*) : std::string& {
+            return *this += std::string::assign(r);
+        }
+
+        fn +=(r: const i8&) : std::string& {
+            return *this += std::string::new(r);
+        }
+    }
+}
+
+fn +(l: const std::string&, r: i8*) : std::string {
+  let r_length = std::strlen(r);
+  let concat_length = l.length + r_length;
+
+  let alloca = std::memory::allocate<i8>(concat_length + 1);
+  std::memory::copy(l.ptr, alloca, l.length);
+  std::memory::copy(r, alloca + l.length, r_length);
+
+  return std::string::assign(alloca, concat_length);
+}
+
+fn +(l: i8*, r: const std::string&) : std::string {
+  let l_length = std::strlen(l);
+  let concat_length = r.length + l_length;
+
+  let alloca = std::memory::allocate<i8>(concat_length + 1);
+  std::memory::copy(l, alloca, l_length);
+  std::memory::copy(r.ptr, alloca + l_length, r.length);
+
+  return std::string::assign(alloca, concat_length);
+}
+
+fn +(l: const std::string&, r: const std::string&) : std::string {
+    return l + r.ptr;
+}
+
+fn *(l: const std::string&, r: u64) : std::string {
+  let string_length = l.length * r;
+  let alloca = std::memory::allocate<i8>(string_length + 1);
+
+  for i in std::range<u64>::new(r) {
+    std::memory::copy(l.ptr, alloca + l.length * i, l.length);
+  }
+
+  return std::string::assign(alloca, l.length * r);
+}
+
+fn ==(l: const std::string&, r: const std::string&) : bool {
+  if l.ptr == r.ptr {
+      return true;
+  }
+
+  if l.length != r.length {
+      return false;
+  }
+
+  for i in std::range<u64>::new(0, l.length) {
+      if l[i] != r[i] {
+          return false;
+      }
+  }
+
+  return true;
+}
+
+fn ==(l: const std::string&, r: i8*) : bool {
+  return l == std::string::assign(r);
+}
+
+fn ==(l: i8*, r: const std::string&) : bool {
+  return std::string::assign(l) == r;
+}
+
+fn !=(l: const std::string&, r: const std::string&) : bool {
+    return (l == r) == false;
+}
+
+fn !=(l: const std::string&, r: i8*) : bool {
+  return (l == r) == false;
+}
+
+fn !=(l: i8*, r: const std::string&) : bool {
+  return (l == r) == false;
+}
