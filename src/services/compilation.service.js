@@ -41,7 +41,7 @@ function exec_san(...args) {
  */
 function normalize_arg(arg) {
   if (!/^".*?"$/.test(arg) && !/^'.*?'$/.test(arg)) {
-    return `"${unescape(arg.replace('"', '\\"'))}"`;
+    return `"${unescape(arg.replace(/"/g, '\\"'))}"`;
   }
 
   return unescape(arg);
