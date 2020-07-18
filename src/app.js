@@ -3,7 +3,9 @@ const helmet = require('helmet');
 const Joi = require('@hapi/joi');
 const { v4: uuidv4 } = require('uuid');
 const path = require('path');
-const fs = require('fs').promises;
+const asyncfs = require('fs');
+const fs = asyncfs.promises;
+
 const { execFile } = require('child_process');
 
 const schema = require('./middleware/schema.middleware.js');
@@ -21,6 +23,15 @@ app.use(helmet());
  */
 function is_valid_path(path) {
   return /^[\w\-. \/]+$/.test(path);
+}
+
+/**
+ * @param {Promise<boolean>} path 
+ */
+function file_exists(path) {
+  return new Promise(resolve => {
+    asyncfs.exists(path, resolve);
+  });
 }
 
 /**
@@ -80,7 +91,10 @@ async function compile(files, entrypoint, run = false, stdin = null) {
 
   const clean = async () => {
     await wipe_files();
-    await fs.rmdir(directory);
+
+    if (await file_exists(directory)) {
+      await fs.rmdir(directory);
+    }
   }
 
   try {
@@ -126,18 +140,27 @@ async function compile(files, entrypoint, run = false, stdin = null) {
 
     created_files.push(executable_fullpath);
 
-    const execution = await exec(executable_fullpath);
+    if (!run) {
+      await clean();
 
-    if (execution.error) {
-      throw new CompilationError(execution.error, execution.stdout, execution.stderr);
+      return {
+        stdout: compilation.stdout,
+        stderr: compilation.stderr,
+      };
+    } else {
+      const execution = await exec(executable_fullpath);
+
+      if (execution.error) {
+        throw new CompilationError(execution.error, execution.stdout, execution.stderr);
+      }
+
+      await clean();
+
+      return {
+        stdout: execution.stdout,
+        stderr: execution.stderr,
+      };
     }
-
-    await clean();
-
-    return {
-      stdout: execution.stdout,
-      stderr: execution.stderr,
-    };
   } catch (e) {
     await clean();
     throw e;
@@ -185,9 +208,45 @@ app.post(
     }
   });
 
-app.post('/build', (req, res) => {
+app.post(
+  '/build',
+  schema({
+    body: Joi.object({
+      files: Joi.object().pattern(Joi.string(), Joi.string().allow('').max(256)),
+      entrypoint: Joi.string().max(256).default('main.sn'),
+    }),
+  }),
+  async (req, res) => {
+    const { files, entrypoint } = req.body;
 
-});
+    try {
+      const result = await compile(files, entrypoint);
+
+      res.json({
+        success: true,
+        stdout: result.stdout,
+        stderr: result.stderr,
+      });
+    } catch (e) {
+      if (e instanceof CompilationError) {
+        res.json({
+          success: false,
+          error: {
+            killed: e.error.killed,
+            code: e.error.code,
+            signal: e.error.signal,
+          },
+          stdout: e.stdout,
+          stderr: e.stderr,
+        });
+      } else if (e instanceof Error) {
+        res.json({
+          success: false,
+          error: e.message,
+        });
+      }
+    }
+  });
 
 const port = process.env.PORT || 4000;
 app.listen(port, () => console.log(`Listening on http://localhost:${port}`));
