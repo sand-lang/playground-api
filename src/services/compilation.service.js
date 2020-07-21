@@ -17,7 +17,8 @@ const CompilationError = require('../errors/CompilationError');
 function exec(...args) {
   return new Promise(resolve => {
     child_process.exec(args.join(' '), {
-      timeout: 25000,
+      timeout: 20000,
+      killSignal: 'SIGKILL',
       windowsHide: true,
     }, (error, stdout, stderr) => {
       resolve({
