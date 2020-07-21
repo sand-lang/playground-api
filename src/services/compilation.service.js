@@ -17,8 +17,7 @@ const CompilationError = require('../errors/CompilationError');
 function exec(...args) {
   return new Promise(resolve => {
     child_process.exec(args.join(' '), {
-      timeout: 20000,
-      killSignal: 'SIGKILL',
+      timeout: 10000,
       windowsHide: true,
     }, (error, stdout, stderr) => {
       resolve({
@@ -133,7 +132,7 @@ module.exports = async (files, entrypoint, run = false, args = [], stdin = null)
       }
 
       const normalized_args = args.map(normalize_arg);
-      const execution = await exec(...echo, executable_fullpath, ...normalized_args);
+      const execution = await exec(...echo, 'timeout', '10', executable_fullpath, ...normalized_args);
 
       if (execution.error) {
         throw new CompilationError(execution.error, execution.stdout, execution.stderr);
