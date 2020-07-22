@@ -20,6 +20,7 @@
   "homepage": "https://github.com/tatakae-game/san-playground#readme",
   "dependencies": {
     "@hapi/joi": "^17.1.1",
+    "cors": "^2.8.5",
     "express": "^4.17.1",
     "helmet": "^3.23.3",
     "uuid": "^8.2.0"

@@ -1,4 +1,5 @@
 const express = require('express');
+const cors = require('cors');
 const helmet = require('helmet');
 const Joi = require('@hapi/joi');
 
@@ -9,6 +10,8 @@ const compile = require('./services/compilation.service');
 const CompilationError = require('./errors/CompilationError');
 
 const app = express();
+
+app.use(cors());
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
