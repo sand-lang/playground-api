@@ -3,6 +3,8 @@ services:
   api:
     build: .
     container_name: san-playground
-    command: npm start
+    command: npm run dev
+    volumes:
+      - .:/app
     ports:
       - "4000:4000"
