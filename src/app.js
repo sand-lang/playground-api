@@ -56,11 +56,11 @@ const compile_action = (run = false) => async (req, res) => {
     if (e instanceof CompilationError) {
       res.json({
         success: false,
-        error: {
+        error: (e.error && typeof e.error === 'object') ? {
           killed: e.error.killed,
           code: e.error.code,
           signal: e.error.signal,
-        },
+        } : e.error,
         stdout: e.stdout,
         stderr: e.stderr,
       });

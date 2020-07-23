@@ -109,7 +109,7 @@ module.exports = async (files, entrypoint, run = false, args = [], stdin = null)
 
     const compilation = await exec_san('build', '-o', executable_fullpath, entrypoint_fullpath);
 
-    if (compilation.error || compilation.stdout) {
+    if (compilation.error || compilation.stderr) {
       throw new CompilationError(compilation.error, compilation.stdout, compilation.stderr)
     }
 
